@@ -36,7 +36,7 @@ class EDL_Editor:
 
     self.play_button = gtk.Button()
     self.play_button.set_image(self.PLAY_IMAGE)
-    self.play_button.connect("clicked", self.on_start)
+    self.play_button.connect("clicked", self.on_play_pause)
 
     hbox = gtk.HBox()
     hbox.pack_start(self.rewind_button, False)
@@ -59,6 +59,10 @@ class EDL_Editor:
     self.window.add(vbox)
     self.window.show_all()
     
+    w,h = self.movie_window.window.get_size()
+    color = gtk.gdk.Color(red=0, green=0, blue=0, pixel=0)		
+    self.movie_window.window.draw_rectangle(self.movie_window.get_style().black_gc, True, 2,2, w,h )
+
     self.player = gst.element_factory_make("playbin2", "player")
     self.player.set_state(gst.STATE_READY)
     filepath = sys.argv[1]
@@ -73,18 +77,6 @@ class EDL_Editor:
     self.set_state_and_play_image(gst.STATE_PLAYING, self.PAUSE_IMAGE)
     gobject.timeout_add(100, self.update_slider)
 
-  def on_destroy(self, window):
-    self.is_playing = False
-    self.player.set_state(gst.STATE_NULL)
-    gtk.main_quit()
-    
-  def on_start(self, w):
-    if not self.is_playing:
-      self.set_state_and_play_image(gst.STATE_PLAYING, self.PAUSE_IMAGE)
-      gobject.timeout_add(100, self.update_slider)
-    else:
-      self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
-            
   def on_message(self, bus, message):
     t = message.type
     if t == gst.MESSAGE_ERROR:
@@ -103,6 +95,18 @@ class EDL_Editor:
       imagesink.set_xwindow_id(self.movie_window.window.xid)
       gtk.gdk.threads_leave()
 
+  def on_destroy(self, window):
+    self.is_playing = False
+    self.player.set_state(gst.STATE_NULL)
+    gtk.main_quit()
+    
+  def on_play_pause(self, w):
+    if not self.is_playing:
+      self.set_state_and_play_image(gst.STATE_PLAYING, self.PAUSE_IMAGE)
+      gobject.timeout_add(100, self.update_slider)
+    else:
+      self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
+            
   def on_slider_change(self, slider):
     self.player.seek_simple(gst.FORMAT_TIME, gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_KEY_UNIT, slider.get_value() * gst.SECOND)
 
@@ -131,14 +135,13 @@ class EDL_Editor:
     self.player.set_state(state)
     self.play_button.set_image(image)
 
-  def format_nanos(self, nanos):
-      hours = int(float(nanos) / gst.SECOND / 60 / 60)
-      mins = int(float(nanos) / gst.SECOND / 60) - hours * 60
-      secs = int(float(nanos) / gst.SECOND) - hours * 60 * 60 - mins * 60
-      result = '%(m)02d:%(s)02d' % {'m':mins, 's':secs}
-      if hours > 0:
-        result = '%(h)02d:%(r)s' % {'h':hours, 'r':result}
-      return result
+  def format_nanos(self, ns):
+    s,ns = divmod(ns, 1000000000)
+    m,s = divmod(s, 60)
+    if m < 60:
+      return "%02i:%02i" %(m,s)
+    h,m = divmod(m, 60)
+    return "%i:%02i:%02i" %(h,m,s)
 
 if __name__ == "__main__":
   EDL_Editor()
