@@ -14,6 +14,9 @@ class EDL_Editor:
   STOP_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_STOP, gtk.ICON_SIZE_BUTTON)
   REWIND_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_REWIND, gtk.ICON_SIZE_BUTTON)
   FORWARD_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_FORWARD, gtk.ICON_SIZE_BUTTON)
+  PREVIOUS_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_PREVIOUS, gtk.ICON_SIZE_BUTTON)
+  RECORD_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_RECORD, gtk.ICON_SIZE_BUTTON)
+  NEXT_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_NEXT, gtk.ICON_SIZE_BUTTON)
 
   def __init__(self):
     self.speed = 1.0
@@ -40,10 +43,23 @@ class EDL_Editor:
     self.forward_button.set_image(self.FORWARD_IMAGE)
     self.forward_button.connect("clicked", self.on_forward)
 
+    self.previous_button = gtk.Button()
+    self.previous_button.set_image(self.PREVIOUS_IMAGE)
+    
+    self.record_button = gtk.Button()
+    self.record_button.set_image(self.RECORD_IMAGE)
+    
+    self.next_button = gtk.Button()
+    self.next_button.set_image(self.NEXT_IMAGE)
+
     hbox = gtk.HBox()
     hbox.pack_start(self.rewind_button, False)
     hbox.pack_start(self.play_button, False)
     hbox.pack_start(self.forward_button, False)
+    hbox.pack_start(gtk.VSeparator(), False, True, 5)
+    hbox.pack_start(self.previous_button, False)
+    hbox.pack_start(self.record_button, False)
+    hbox.pack_start(self.next_button, False)
 
     self.label_time = gtk.Label(self.progress)
     self.label_speed = gtk.Label("%f x" % self.speed)
@@ -113,7 +129,7 @@ class EDL_Editor:
       self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
 
   def on_rewind(self, w):
-    pass
+    self.set_speed(self.dec_speed())
 
   def on_forward(self, w):
     self.set_speed(self.inc_speed())
@@ -170,6 +186,14 @@ class EDL_Editor:
     speed = self.speed
     if speed < 32:
       speed *= 2
+    else:
+      speed = 1.0
+    return speed
+    
+  def dec_speed(self):
+    speed = self.speed
+    if speed > 1:
+      speed /= 2
     else:
       speed = 1.0
     return speed
