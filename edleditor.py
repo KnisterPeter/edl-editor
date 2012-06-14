@@ -16,7 +16,11 @@ class EDL_Editor:
   FORWARD_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_FORWARD, gtk.ICON_SIZE_BUTTON)
 
   def __init__(self):
-    self.time = gtk.Label('0:00 / 0:00')
+    self.speed = 1.0
+    self.progress = "0:00 / 0:00"
+    
+    self.movie_window = gtk.DrawingArea()
+    self.movie_window.modify_bg(gtk.STATE_NORMAL, self.movie_window.style.black)
 
     self.slider = gtk.HScale()
     self.slider.set_range(0, 100)
@@ -24,45 +28,45 @@ class EDL_Editor:
     self.slider.set_draw_value(False)
     self.slider.connect('value-changed', self.on_slider_change)
 
-    sbox = gtk.HBox()
-    sbox.pack_start(self.time, False)
-    sbox.pack_start(self.slider, True)
-
     self.rewind_button = gtk.Button()
     self.rewind_button.set_image(self.REWIND_IMAGE)
-
-    self.forward_button = gtk.Button()
-    self.forward_button.set_image(self.FORWARD_IMAGE)
+    self.rewind_button.connect("clicked", self.on_rewind)
 
     self.play_button = gtk.Button()
     self.play_button.set_image(self.PLAY_IMAGE)
     self.play_button.connect("clicked", self.on_play_pause)
+
+    self.forward_button = gtk.Button()
+    self.forward_button.set_image(self.FORWARD_IMAGE)
+    self.forward_button.connect("clicked", self.on_forward)
 
     hbox = gtk.HBox()
     hbox.pack_start(self.rewind_button, False)
     hbox.pack_start(self.play_button, False)
     hbox.pack_start(self.forward_button, False)
 
-    self.movie_window = gtk.DrawingArea()
+    self.label_time = gtk.Label(self.progress)
+    self.label_speed = gtk.Label("%f x" % self.speed)
+    sbox = gtk.HBox()
+    sbox.pack_start(self.label_time, False, True, 5)
+    sbox.pack_start(gtk.VSeparator(), False, True, 5)
+    sbox.pack_start(self.label_speed, False, True, 5)
 
     vbox = gtk.VBox()
     vbox.add(self.movie_window)
-    vbox.pack_start(sbox, False)
-    vbox.pack_start(hbox, False)
-
+    vbox.pack_start(self.slider, False, True, 5)
+    vbox.pack_start(hbox, False, True, 5)
+    vbox.pack_start(sbox, False, True, 5)
+    
     self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
     self.window.set_title("EDL Editor")
     self.window.set_default_size(640, 480)
-    self.window.set_border_width(6)
+    #self.window.set_border_width(6)
     self.window.set_size_request(600, 50)
     self.window.connect('destroy', self.on_destroy)
     self.window.add(vbox)
     self.window.show_all()
     
-    w,h = self.movie_window.window.get_size()
-    color = gtk.gdk.Color(red=0, green=0, blue=0, pixel=0)		
-    self.movie_window.window.draw_rectangle(self.movie_window.get_style().black_gc, True, 2,2, w,h )
-
     self.player = gst.element_factory_make("playbin2", "player")
     self.player.set_state(gst.STATE_READY)
     filepath = sys.argv[1]
@@ -105,30 +109,49 @@ class EDL_Editor:
       self.set_state_and_play_image(gst.STATE_PLAYING, self.PAUSE_IMAGE)
       gobject.timeout_add(100, self.update_slider)
     else:
+      self.set_speed(1.0)
       self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
-            
+
+  def on_rewind(self, w):
+    pass
+
+  def on_forward(self, w):
+    self.set_speed(self.inc_speed())
+
   def on_slider_change(self, slider):
-    self.player.seek_simple(gst.FORMAT_TIME, gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_KEY_UNIT, slider.get_value() * gst.SECOND)
+    pos = slider.get_value() * gst.SECOND
+    self.player.seek_simple(gst.FORMAT_TIME, 
+      gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_KEY_UNIT, 
+      pos)
 
   def update_slider(self):
     if not self.is_playing:
       return False
-    
     try:
-      nanosecs, format = self.player.query_position(gst.FORMAT_TIME)
-      duration_nanosecs, format = self.player.query_duration(gst.FORMAT_TIME)
+      ns, format = self.player.query_position(gst.FORMAT_TIME)
+      dns, format = self.player.query_duration(gst.FORMAT_TIME)
 
       self.slider.handler_block_by_func(self.on_slider_change)
-      self.slider.set_range(0, float(duration_nanosecs) / gst.SECOND)
-      self.slider.set_value(float(nanosecs) / gst.SECOND)
+      self.slider.set_range(0, float(dns) / gst.SECOND)
+      self.slider.set_value(float(ns) / gst.SECOND)
       self.slider.handler_unblock_by_func(self.on_slider_change)
 
-      cur = self.format_nanos(nanosecs)
-      end = self.format_nanos(duration_nanosecs)
-      self.time.set_text('%(cur)s / %(end)s' % {'cur':cur, 'end':end})
+      cur = self.format_nanos(ns)
+      end = self.format_nanos(dns)
+      self.progress = '%s / %s' % (cur, end)
+      self.update_status()
     except gst.QueryError:
       pass
     return True
+
+  def set_speed(self, speed=1.0):
+    self.speed = speed
+    ns, format = self.player.query_position(gst.FORMAT_TIME)
+    self.player.seek(speed, 
+      gst.FORMAT_TIME, gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_ACCURATE,
+      gst.SEEK_TYPE_SET, ns,
+      gst.SEEK_TYPE_NONE, 0)
+    self.update_status()
 
   def set_state_and_play_image(self, state, image):
     self.is_playing = state == gst.STATE_PLAYING
@@ -142,6 +165,18 @@ class EDL_Editor:
       return "%02i:%02i" %(m,s)
     h,m = divmod(m, 60)
     return "%i:%02i:%02i" %(h,m,s)
+    
+  def inc_speed(self):
+    speed = self.speed
+    if speed < 32:
+      speed *= 2
+    else:
+      speed = 1.0
+    return speed
+    
+  def update_status(self):
+    self.label_time.set_text(self.progress)
+    self.label_speed.set_text("%.2f x" % self.speed)
 
 if __name__ == "__main__":
   EDL_Editor()
