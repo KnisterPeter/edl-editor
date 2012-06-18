@@ -9,18 +9,27 @@ import urllib2
 
 class EDL_Editor:
   
+  REWIND_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_REWIND, gtk.ICON_SIZE_BUTTON)
+  PREVIOUS_FRAME = gtk.image_new_from_stock(gtk.STOCK_MEDIA_PREVIOUS, gtk.ICON_SIZE_BUTTON)
   PLAY_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_PLAY, gtk.ICON_SIZE_BUTTON)
   PAUSE_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_PAUSE, gtk.ICON_SIZE_BUTTON)
   STOP_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_STOP, gtk.ICON_SIZE_BUTTON)
-  REWIND_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_REWIND, gtk.ICON_SIZE_BUTTON)
+  NEXT_FRAME = gtk.image_new_from_stock(gtk.STOCK_MEDIA_NEXT, gtk.ICON_SIZE_BUTTON)
   FORWARD_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_FORWARD, gtk.ICON_SIZE_BUTTON)
-  PREVIOUS_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_PREVIOUS, gtk.ICON_SIZE_BUTTON)
-  RECORD_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_RECORD, gtk.ICON_SIZE_BUTTON)
-  NEXT_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_NEXT, gtk.ICON_SIZE_BUTTON)
+  
+  PREVIOUS_MARKER = gtk.image_new_from_stock(gtk.STOCK_GOTO_FIRST, gtk.ICON_SIZE_BUTTON)
+  MARK_FRAME = gtk.image_new_from_stock(gtk.STOCK_MEDIA_RECORD, gtk.ICON_SIZE_BUTTON)
+  NEXT_MARKER = gtk.image_new_from_stock(gtk.STOCK_GOTO_LAST, gtk.ICON_SIZE_BUTTON)
+  
+  MODE_STOP = 0
+  MODE_PAUSE = 1
+  MODE_SEEK_PAUSE = 2
+  MODE_PLAY = 100
 
   def __init__(self):
     self.speed = 1.0
     self.progress = "0:00 / 0:00"
+    self.mode = self.MODE_STOP
     
     self.movie_window = gtk.DrawingArea()
     self.movie_window.modify_bg(gtk.STATE_NORMAL, self.movie_window.style.black)
@@ -34,32 +43,28 @@ class EDL_Editor:
     self.rewind_button = gtk.Button()
     self.rewind_button.set_image(self.REWIND_IMAGE)
     self.rewind_button.connect("clicked", self.on_rewind)
-
     self.play_button = gtk.Button()
     self.play_button.set_image(self.PLAY_IMAGE)
     self.play_button.connect("clicked", self.on_play_pause)
-
     self.forward_button = gtk.Button()
     self.forward_button.set_image(self.FORWARD_IMAGE)
     self.forward_button.connect("clicked", self.on_forward)
 
-    self.previous_button = gtk.Button()
-    self.previous_button.set_image(self.PREVIOUS_IMAGE)
-    
+    self.previous_marker_button = gtk.Button()
+    self.previous_marker_button.set_image(self.PREVIOUS_MARKER)
     self.record_button = gtk.Button()
-    self.record_button.set_image(self.RECORD_IMAGE)
-    
-    self.next_button = gtk.Button()
-    self.next_button.set_image(self.NEXT_IMAGE)
+    self.record_button.set_image(self.MARK_FRAME)
+    self.next_marker_button = gtk.Button()
+    self.next_marker_button.set_image(self.NEXT_MARKER)
 
     hbox = gtk.HBox()
     hbox.pack_start(self.rewind_button, False)
     hbox.pack_start(self.play_button, False)
     hbox.pack_start(self.forward_button, False)
     hbox.pack_start(gtk.VSeparator(), False, True, 5)
-    hbox.pack_start(self.previous_button, False)
+    hbox.pack_start(self.previous_marker_button, False)
     hbox.pack_start(self.record_button, False)
-    hbox.pack_start(self.next_button, False)
+    hbox.pack_start(self.next_marker_button, False)
 
     self.label_time = gtk.Label(self.progress)
     self.label_speed = gtk.Label("%f x" % self.speed)
@@ -116,12 +121,12 @@ class EDL_Editor:
       gtk.gdk.threads_leave()
 
   def on_destroy(self, window):
-    self.is_playing = False
+    self.mode = self.MODE_STOP
     self.player.set_state(gst.STATE_NULL)
     gtk.main_quit()
     
   def on_play_pause(self, w):
-    if not self.is_playing:
+    if self.mode < self.MODE_PLAY:
       self.set_state_and_play_image(gst.STATE_PLAYING, self.PAUSE_IMAGE)
       gobject.timeout_add(100, self.update_slider)
     else:
@@ -129,19 +134,46 @@ class EDL_Editor:
       self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
 
   def on_rewind(self, w):
-    self.set_speed(self.dec_speed())
+    if self.mode >= self.MODE_PLAY:
+      self.set_speed(self.dec_speed())
+    elif self.mode == self.MODE_PAUSE:
+      self.set_state_and_play_image(gst.STATE_PLAYING, self.PLAY_IMAGE)
+      self.mode = self.MODE_SEEK_PAUSE
+      ns, format = self.player.query_position(gst.FORMAT_TIME)
+      pos = ns  - 1 * gst.SECOND
+      if pos < 0:
+        pos = 0
+      self.player.seek_simple(gst.
+      FORMAT_TIME, 
+        gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_ACCURATE,
+        pos)
+      gobject.timeout_add(100, self.update_slider)
 
   def on_forward(self, w):
-    self.set_speed(self.inc_speed())
+    if self.mode >= self.MODE_PLAY:
+      self.set_speed(self.inc_speed())
+    elif self.mode == self.MODE_PAUSE:
+      self.set_state_and_play_image(gst.STATE_PLAYING, self.PLAY_IMAGE)
+      self.mode = self.MODE_SEEK_PAUSE
+      ns, format = self.player.query_position(gst.FORMAT_TIME)
+      self.player.seek_simple(gst.
+      FORMAT_TIME, 
+        gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_ACCURATE,
+        ns  + 1 * gst.SECOND)
+      gobject.timeout_add(100, self.update_slider)
 
   def on_slider_change(self, slider):
-    pos = slider.get_value() * gst.SECOND
+    pos = self.slider.get_value()
     self.player.seek_simple(gst.FORMAT_TIME, 
       gst.SEEK_FLAG_FLUSH | gst.SEEK_FLAG_KEY_UNIT, 
-      pos)
+      pos * gst.SECOND)
+    if self.mode == self.MODE_PAUSE:
+      self.set_state_and_play_image(gst.STATE_PLAYING, self.PLAY_IMAGE)
+      self.mode = self.MODE_SEEK_PAUSE
+      gobject.timeout_add(100, self.update_slider)
 
   def update_slider(self):
-    if not self.is_playing:
+    if self.mode < self.MODE_SEEK_PAUSE:
       return False
     try:
       ns, format = self.player.query_position(gst.FORMAT_TIME)
@@ -158,8 +190,12 @@ class EDL_Editor:
       self.update_status()
     except gst.QueryError:
       pass
+    if self.mode == self.MODE_SEEK_PAUSE:
+      self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
+      self.mode = self.MODE_PAUSE
+      return False
     return True
-
+    
   def set_speed(self, speed=1.0):
     self.speed = speed
     ns, format = self.player.query_position(gst.FORMAT_TIME)
@@ -170,7 +206,13 @@ class EDL_Editor:
     self.update_status()
 
   def set_state_and_play_image(self, state, image):
-    self.is_playing = state == gst.STATE_PLAYING
+    if state == gst.STATE_PLAYING:
+      self.mode = self.MODE_PLAY
+    elif state == gst.STATE_PAUSED:
+      self.mode = self.MODE_PAUSE
+    elif state == gst.STATE_NULL:
+      self.mode = self.MODE_STOP
+    
     self.player.set_state(state)
     self.play_button.set_image(image)
 
