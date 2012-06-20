@@ -1,6 +1,7 @@
 #
 # Copied from https://github.com/lesbi/edledit
 #
+import sys, os
 import re
 from datetime import timedelta
 
@@ -93,51 +94,29 @@ class EDL(list):
         return None
 
     def normalize(self, totalTime=None):
-        # TODO merge contiguous blocks
         # TODO remove zero-length blocks
+        self.sort(key=lambda block: block.startTime)
         for block in self:
             if totalTime:
                 if block.stopTime is None or block.stopTime > totalTime:
                     block.stopTime = totalTime
+        i = 0
+        while i < len(self):
+          if i > 0:
+            prev = self[i - 1]
+            curr = self[i]
+            if prev.overlaps(curr):
+                if prev.startTime > curr.startTime:
+                  prev.startTime = curr.startTime
+                if prev.stopTime < curr.stopTime:
+                  prev.stopTime = curr.stopTime
+                del self[i:i+1]
+                i = i - 1
+          i = i + 1
         self.validate()
 
-    def cutStart(self, startTime):
-        for i, block in enumerate(self):
-            if block.containsTime(startTime):
-                #stopTime = block.stopTime
-                #block.stopTime = startTime
-                #self.insert(i+1, EDLBlock(startTime, stopTime, action))
-                block.startTime = startTime
-                return
-            elif block.startTime >= startTime:
-                stopTime = block.startTime
-                self.insert(i, EDLBlock(startTime, stopTime, 
-                        action=ACTION_SKIP))
-                return
-        self.append(EDLBlock(startTime, None, action=ACTION_SKIP))
-
-    def cutStop(self, stopTime):
-        prevBlock = None
-        for i, block in enumerate(self):
-            if block.containsTime(stopTime):
-                block.stopTime = stopTime
-                return
-            elif block.startTime >= stopTime:
-                if prevBlock:
-                    #startTime = prevBlock.stopTime
-                    prevBlock.stopTime = stopTime
-                else:
-                    startTime = timedelta(0)
-                    self.insert(i, EDLBlock(startTime, stopTime, 
-                            action=ACTION_SKIP))
-                return
-            prevBlock = block
-        if prevBlock:
-            #startTime = prevBlock.stopTime
-            prevBlock.stopTime = stopTime
-        else:
-            startTime = timedelta(0)
-            self.append(EDLBlock(startTime, stopTime, action=ACTION_SKIP))
+    def newBlock(self, start, end):
+        self.append(EDLBlock(start, end))
 
     def deleteBlock(self, aTime):
         """ Delete the block overlapping aTime """

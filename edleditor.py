@@ -22,7 +22,8 @@ class EDL_Editor:
   FORWARD_IMAGE = gtk.image_new_from_stock(gtk.STOCK_MEDIA_FORWARD, gtk.ICON_SIZE_BUTTON)
   
   PREVIOUS_MARKER = gtk.image_new_from_stock(gtk.STOCK_GOTO_FIRST, gtk.ICON_SIZE_BUTTON)
-  MARK_FRAME = gtk.image_new_from_stock(gtk.STOCK_MEDIA_RECORD, gtk.ICON_SIZE_BUTTON)
+  MARK_START = gtk.image_new_from_stock(gtk.STOCK_GO_BACK, gtk.ICON_SIZE_BUTTON)
+  MARK_END = gtk.image_new_from_stock(gtk.STOCK_GO_FORWARD, gtk.ICON_SIZE_BUTTON)
   NEXT_MARKER = gtk.image_new_from_stock(gtk.STOCK_GOTO_LAST, gtk.ICON_SIZE_BUTTON)
   
   SAVE = gtk.image_new_from_stock(gtk.STOCK_FLOPPY, gtk.ICON_SIZE_BUTTON)
@@ -38,6 +39,8 @@ class EDL_Editor:
     self.mode = self.MODE_STOP
     self.position = 0
     self.duration = 0
+    self.start = None
+    self.end = None
     
     self.movie_window = gtk.DrawingArea()
     self.movie_window.modify_bg(gtk.STATE_NORMAL, self.movie_window.style.black)
@@ -73,9 +76,12 @@ class EDL_Editor:
     self.previous_marker_button = gtk.Button()
     self.previous_marker_button.set_image(self.PREVIOUS_MARKER)
     self.previous_marker_button.connect("clicked", self.on_previous_marker)
-    self.toggle_marker_button = gtk.Button()
-    self.toggle_marker_button.set_image(self.MARK_FRAME)
-    self.toggle_marker_button.connect("clicked", self.on_toggle_marker)
+    self.start_marker_button = gtk.Button()
+    self.start_marker_button.set_image(self.MARK_START)
+    self.start_marker_button.connect("clicked", self.on_mark_start)
+    self.end_marker_button = gtk.Button()
+    self.end_marker_button.set_image(self.MARK_END)
+    self.end_marker_button.connect("clicked", self.on_mark_end)
     self.next_marker_button = gtk.Button()
     self.next_marker_button.set_image(self.NEXT_MARKER)
     self.next_marker_button.connect("clicked", self.on_next_marker)
@@ -96,7 +102,8 @@ class EDL_Editor:
     hbox.pack_start(self.forward_60s, False)
     hbox.pack_start(gtk.VSeparator(), False, True, 5)
     hbox.pack_start(self.previous_marker_button, False)
-    hbox.pack_start(self.toggle_marker_button, False)
+    hbox.pack_start(self.start_marker_button, False)
+    hbox.pack_start(self.end_marker_button, False)
     hbox.pack_start(self.next_marker_button, False)
     hbox.pack_start(gtk.VSeparator(), False, True, 5)
     hbox.pack_start(self.save_button, False)
@@ -141,7 +148,14 @@ class EDL_Editor:
     bus.connect("sync-message::element", self.on_sync_message)
 
     self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
-    
+
+    # TODO: query duration upfront
+    pos = 0
+    boundary = self.edl.getNextBoundary(timedelta(seconds=pos / gst.SECOND))
+    while boundary != None:
+      pos = boundary.days*86400+boundary.seconds * gst.SECOND
+      self.slider.add_mark(float(pos) / gst.SECOND, 0, None)
+      boundary = self.edl.getNextBoundary(timedelta(seconds=pos / gst.SECOND))
 
   def on_message(self, bus, message):
     t = message.type
@@ -220,14 +234,13 @@ class EDL_Editor:
     t = self.edl.getPrevBoundary(timedelta(seconds=self.position / gst.SECOND))
     self.seek_to(t.days*86400+t.seconds * gst.SECOND)
 
-  def on_toggle_marker(self, button):
-    block = self.edl.findBlock(timedelta(seconds=self.position / gst.SECOND))
-    if block != None:
-      print block.action()
-      self.edl.cutStart(timedelta(seconds=self.position / gst.SECOND))
-      pyedl.dump(self.edl, sys.stdout)
-    else:
-      print block
+  def on_mark_start(self, button):
+    self.start = self.position
+    self.new_marker()
+
+  def on_mark_end(self, button):
+    self.end = self.position
+    self.new_marker()
 
   def on_next_marker(self, button):
     t = self.edl.getNextBoundary(timedelta(seconds=self.position / gst.SECOND))
@@ -238,9 +251,17 @@ class EDL_Editor:
 
   def on_save(self, button):
     self.edl.normalize(timedelta(seconds=self.duration / gst.SECOND))
-    #pyedl.dump(self.edl, open(self.edlfile, "w"))
-    pyedl.dump(self.edl, sys.stdout)
-    pass
+    pyedl.dump(self.edl, open(self.edlfile, "w"))
+
+  def new_marker(self):
+    if self.start != None and self.end != None:
+      self.edl.newBlock(
+        timedelta(seconds=self.start / gst.SECOND), 
+        timedelta(seconds=self.end / gst.SECOND))
+      self.slider.add_mark(float(self.start) / gst.SECOND, 0, None)
+      self.slider.add_mark(float(self.end) / gst.SECOND, 0, None)
+      self.start = None
+      self.end = None
 
   def seek_to(self, pos):
     self.set_state_and_play_image(gst.STATE_PLAYING, self.PLAY_IMAGE)
