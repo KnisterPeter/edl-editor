@@ -133,6 +133,7 @@ class EDL_Editor:
     self.player.set_state(gst.STATE_READY)
     filepath = sys.argv[1]
     if not os.path.isfile(filepath):
+      print "File", filepath, "not found"
       sys.exit(1)
     self.player.set_property("uri", "file://" + urllib2.quote(filepath.encode("utf8")))
     self.edlfile = os.path.splitext(filepath)[0] + ".edl"
@@ -149,13 +150,12 @@ class EDL_Editor:
 
     self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
 
-    # TODO: query duration upfront
-    pos = 0
-    boundary = self.edl.getNextBoundary(timedelta(seconds=pos / gst.SECOND))
-    while boundary != None:
-      pos = boundary.days*86400+boundary.seconds * gst.SECOND
-      self.slider.add_mark(float(pos) / gst.SECOND, 0, None)
-      boundary = self.edl.getNextBoundary(timedelta(seconds=pos / gst.SECOND))
+    for block in self.edl:
+      start = float((block.startTime.days * 86400 + block.startTime.seconds * gst.SECOND) / gst.SECOND)
+      end = float((block.stopTime.days * 86400 + block.stopTime.seconds * gst.SECOND) / gst.SECOND)
+      while start < end:
+        self.slider.add_mark(start, 0, None)
+        start = start + 1
 
   def on_message(self, bus, message):
     t = message.type
@@ -163,6 +163,9 @@ class EDL_Editor:
       self.set_state_and_play_image(gst.STATE_NULL, self.PLAY_IMAGE)
       err, debug = message.parse_error()
       print "Error: %s" % err, debug
+    elif t == gst.MESSAGE_DURATION:
+      format, duration = message.parse_duration()
+      self.setup_duration(duration)
   
   def on_sync_message(self, bus, message):
     if message.structure is None:
@@ -179,6 +182,12 @@ class EDL_Editor:
     self.mode = self.MODE_STOP
     self.player.set_state(gst.STATE_NULL)
     gtk.main_quit()
+
+  def setup_duration(self, duration):
+    self.duration = duration
+    self.slider.handler_block_by_func(self.on_slider_change)
+    self.slider.set_range(0, float(self.duration) / gst.SECOND)
+    self.slider.handler_unblock_by_func(self.on_slider_change)
     
   def on_rewind_60s(self, w):
     if self.mode == self.MODE_PAUSE:
