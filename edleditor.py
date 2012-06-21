@@ -151,11 +151,14 @@ class EDL_Editor:
     self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
 
     for block in self.edl:
-      start = float((block.startTime.days * 86400 + block.startTime.seconds * gst.SECOND) / gst.SECOND)
-      end = float((block.stopTime.days * 86400 + block.stopTime.seconds * gst.SECOND) / gst.SECOND)
-      while start < end:
-        self.slider.add_mark(start, 0, None)
-        start = start + 1
+      start = float(block.startTime.days * 86400 + block.startTime.seconds * gst.SECOND) / gst.SECOND
+      end = float(block.stopTime.days * 86400 + block.stopTime.seconds * gst.SECOND) / gst.SECOND
+      self.add_marker(start, end)
+
+  def add_marker(self, start, end):
+    while start < end:
+      self.slider.add_mark(start, 0, None)
+      start = start + 1
 
   def on_message(self, bus, message):
     t = message.type
@@ -267,8 +270,9 @@ class EDL_Editor:
       self.edl.newBlock(
         timedelta(seconds=self.start / gst.SECOND), 
         timedelta(seconds=self.end / gst.SECOND))
-      self.slider.add_mark(float(self.start) / gst.SECOND, 0, None)
-      self.slider.add_mark(float(self.end) / gst.SECOND, 0, None)
+      #self.slider.add_mark(float(self.start) / gst.SECOND, 0, None)
+      #self.slider.add_mark(float(self.end) / gst.SECOND, 0, None)
+      self.add_marker(float(self.start) / gst.SECOND, float(self.end) / gst.SECOND)
       self.start = None
       self.end = None
 
