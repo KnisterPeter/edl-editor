@@ -23,6 +23,7 @@ class EDL_Editor:
   
   PREVIOUS_MARKER = gtk.image_new_from_stock(gtk.STOCK_GOTO_FIRST, gtk.ICON_SIZE_BUTTON)
   MARK_START = gtk.image_new_from_stock(gtk.STOCK_GO_BACK, gtk.ICON_SIZE_BUTTON)
+  MARK_DELETE = gtk.image_new_from_stock(gtk.STOCK_DELETE, gtk.ICON_SIZE_BUTTON)
   MARK_END = gtk.image_new_from_stock(gtk.STOCK_GO_FORWARD, gtk.ICON_SIZE_BUTTON)
   NEXT_MARKER = gtk.image_new_from_stock(gtk.STOCK_GOTO_LAST, gtk.ICON_SIZE_BUTTON)
   
@@ -79,6 +80,9 @@ class EDL_Editor:
     self.start_marker_button = gtk.Button()
     self.start_marker_button.set_image(self.MARK_START)
     self.start_marker_button.connect("clicked", self.on_mark_start)
+    self.delete_marker_button = gtk.Button()
+    self.delete_marker_button.set_image(self.MARK_DELETE)
+    self.delete_marker_button.connect("clicked", self.on_mark_delete)
     self.end_marker_button = gtk.Button()
     self.end_marker_button.set_image(self.MARK_END)
     self.end_marker_button.connect("clicked", self.on_mark_end)
@@ -103,6 +107,7 @@ class EDL_Editor:
     hbox.pack_start(gtk.VSeparator(), False, True, 5)
     hbox.pack_start(self.previous_marker_button, False)
     hbox.pack_start(self.start_marker_button, False)
+    hbox.pack_start(self.delete_marker_button, False)
     hbox.pack_start(self.end_marker_button, False)
     hbox.pack_start(self.next_marker_button, False)
     hbox.pack_start(gtk.VSeparator(), False, True, 5)
@@ -149,7 +154,9 @@ class EDL_Editor:
     bus.connect("sync-message::element", self.on_sync_message)
 
     self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
+    self.draw_markers()
 
+  def draw_markers(self):
     for block in self.edl:
       start = float(block.startTime.days * 86400 + block.startTime.seconds * gst.SECOND) / gst.SECOND
       end = float(block.stopTime.days * 86400 + block.stopTime.seconds * gst.SECOND) / gst.SECOND
@@ -159,6 +166,10 @@ class EDL_Editor:
     while start < end:
       self.slider.add_mark(start, 0, None)
       start = start + 1
+      
+  def redraw_marker(self):
+    self.slider.clear_marks()
+    self.draw_markers()
 
   def on_message(self, bus, message):
     t = message.type
@@ -250,6 +261,15 @@ class EDL_Editor:
     self.start = self.position
     self.new_marker()
 
+  def on_mark_delete(self, button):
+    t = timedelta(seconds=self.position / gst.SECOND)
+    block = self.edl.findBlock(t)
+    if block is not None:
+      self.edl.deleteBlock(t)
+      self.redraw_marker()
+    self.start = None
+    self.end = None
+
   def on_mark_end(self, button):
     self.end = self.position
     self.new_marker()
@@ -270,8 +290,6 @@ class EDL_Editor:
       self.edl.newBlock(
         timedelta(seconds=self.start / gst.SECOND), 
         timedelta(seconds=self.end / gst.SECOND))
-      #self.slider.add_mark(float(self.start) / gst.SECOND, 0, None)
-      #self.slider.add_mark(float(self.end) / gst.SECOND, 0, None)
       self.add_marker(float(self.start) / gst.SECOND, float(self.end) / gst.SECOND)
       self.start = None
       self.end = None
