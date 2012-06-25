@@ -35,6 +35,11 @@ class EDL_Editor:
   MODE_PLAY = 100
 
   def __init__(self):
+    filepath = os.path.abspath(sys.argv[1])
+    if not os.path.isfile(filepath):
+      print "File", filepath, "not found"
+      sys.exit(1)
+
     self.speed = 1.0
     self.progress = "0:00 / 0:00"
     self.mode = self.MODE_STOP
@@ -43,6 +48,12 @@ class EDL_Editor:
     self.start = None
     self.end = None
     
+    self.setup_ui()
+    self.setup_pipeline(filepath)
+
+    self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
+
+  def setup_ui(self):
     self.movie_window = gtk.DrawingArea()
     self.movie_window.modify_bg(gtk.STATE_NORMAL, self.movie_window.style.black)
 
@@ -134,12 +145,9 @@ class EDL_Editor:
     self.window.add(vbox)
     self.window.show_all()
     
+  def setup_pipeline(self, filepath):
     self.player = gst.element_factory_make("playbin2", "player")
     self.player.set_state(gst.STATE_READY)
-    filepath = sys.argv[1]
-    if not os.path.isfile(filepath):
-      print "File", filepath, "not found"
-      sys.exit(1)
     self.player.set_property("uri", "file://" + urllib2.quote(filepath.encode("utf8")))
     self.edlfile = os.path.splitext(filepath)[0] + ".edl"
     if os.path.isfile(self.edlfile):
@@ -153,23 +161,9 @@ class EDL_Editor:
     bus.connect("message", self.on_message)
     bus.connect("sync-message::element", self.on_sync_message)
 
-    self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
-    self.draw_markers()
-
-  def draw_markers(self):
-    for block in self.edl:
-      start = float(block.startTime.days * 86400 + block.startTime.seconds * gst.SECOND) / gst.SECOND
-      end = float(block.stopTime.days * 86400 + block.stopTime.seconds * gst.SECOND) / gst.SECOND
-      self.add_marker(start, end)
-
-  def add_marker(self, start, end):
-    while start < end:
-      self.slider.add_mark(start, 0, None)
-      start = start + 1
-      
-  def redraw_marker(self):
-    self.slider.clear_marks()
-    self.draw_markers()
+  ###
+  # Event handler
+  ###
 
   def on_message(self, bus, message):
     t = message.type
@@ -180,7 +174,13 @@ class EDL_Editor:
     elif t == gst.MESSAGE_DURATION:
       format, duration = message.parse_duration()
       self.setup_duration(duration)
-  
+      self.draw_markers()
+
+  def on_destroy(self, window):
+    self.mode = self.MODE_STOP
+    self.player.set_state(gst.STATE_NULL)
+    gtk.main_quit()
+
   def on_sync_message(self, bus, message):
     if message.structure is None:
       return
@@ -192,17 +192,6 @@ class EDL_Editor:
       imagesink.set_xwindow_id(self.movie_window.window.xid)
       gtk.gdk.threads_leave()
 
-  def on_destroy(self, window):
-    self.mode = self.MODE_STOP
-    self.player.set_state(gst.STATE_NULL)
-    gtk.main_quit()
-
-  def setup_duration(self, duration):
-    self.duration = duration
-    self.slider.handler_block_by_func(self.on_slider_change)
-    self.slider.set_range(0, float(self.duration) / gst.SECOND)
-    self.slider.handler_unblock_by_func(self.on_slider_change)
-    
   def on_rewind_60s(self, w):
     if self.mode == self.MODE_PAUSE:
       self.seek_paused(-60)
@@ -224,8 +213,9 @@ class EDL_Editor:
       self.set_state_and_play_image(gst.STATE_PLAYING, self.PAUSE_IMAGE)
       gobject.timeout_add(self.TIMEOUT, self.update_slider)
     else:
+      if self.speed <= 1.0:
+        self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
       self.set_speed(1.0)
-      self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
 
   def on_forward(self, w):
     if self.mode >= self.MODE_PLAY:
@@ -285,6 +275,63 @@ class EDL_Editor:
     self.edl.normalize(timedelta(seconds=self.duration / gst.SECOND))
     pyedl.dump(self.edl, open(self.edlfile, "w"))
 
+  ###
+  # UI operations
+  ###
+
+  def draw_markers(self):
+    for block in self.edl:
+      start = float(block.startTime.days * 86400 + block.startTime.seconds * gst.SECOND) / gst.SECOND
+      end = float(block.stopTime.days * 86400 + block.stopTime.seconds * gst.SECOND) / gst.SECOND
+      self.add_marker(start, end)
+
+  def add_marker(self, start, end):
+    while start < end:
+      self.slider.add_mark(start, 0, None)
+      start = start + 1
+
+  def redraw_marker(self):
+    self.slider.clear_marks()
+    self.draw_markers()
+
+  def setup_duration(self, duration):
+    self.duration = duration
+    self.slider.handler_block_by_func(self.on_slider_change)
+    self.slider.set_range(0, float(self.duration) / gst.SECOND)
+    self.slider.handler_unblock_by_func(self.on_slider_change)
+    
+  def update_slider(self):
+    if self.mode < self.MODE_SEEK_PAUSE:
+      return False
+    try:
+      self.position, format = self.player.query_position(gst.FORMAT_TIME)
+      self.duration, format = self.player.query_duration(gst.FORMAT_TIME)
+
+      self.slider.handler_block_by_func(self.on_slider_change)
+      self.slider.set_range(0, float(self.duration) / gst.SECOND)
+      self.slider.set_value(float(self.position) / gst.SECOND)
+      self.slider.handler_unblock_by_func(self.on_slider_change)
+
+      cur = self.format_nanos(self.position)
+      end = self.format_nanos(self.duration)
+      self.progress = '%s / %s' % (cur, end)
+      self.update_status()
+    except gst.QueryError:
+      pass
+    if self.mode == self.MODE_SEEK_PAUSE:
+      self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
+      self.mode = self.MODE_PAUSE
+      return False
+    return True
+    
+  def update_status(self):
+    self.label_time.set_text(self.progress)
+    self.label_speed.set_text("%.2f x" % self.speed)
+
+  ###
+  # Util operations
+  ###
+    
   def new_marker(self):
     if self.start != None and self.end != None:
       self.edl.newBlock(
@@ -314,30 +361,6 @@ class EDL_Editor:
       pos)
     gobject.timeout_add(self.TIMEOUT, self.update_slider)
 
-  def update_slider(self):
-    if self.mode < self.MODE_SEEK_PAUSE:
-      return False
-    try:
-      self.position, format = self.player.query_position(gst.FORMAT_TIME)
-      self.duration, format = self.player.query_duration(gst.FORMAT_TIME)
-
-      self.slider.handler_block_by_func(self.on_slider_change)
-      self.slider.set_range(0, float(self.duration) / gst.SECOND)
-      self.slider.set_value(float(self.position) / gst.SECOND)
-      self.slider.handler_unblock_by_func(self.on_slider_change)
-
-      cur = self.format_nanos(self.position)
-      end = self.format_nanos(self.duration)
-      self.progress = '%s / %s' % (cur, end)
-      self.update_status()
-    except gst.QueryError:
-      pass
-    if self.mode == self.MODE_SEEK_PAUSE:
-      self.set_state_and_play_image(gst.STATE_PAUSED, self.PLAY_IMAGE)
-      self.mode = self.MODE_PAUSE
-      return False
-    return True
-    
   def set_speed(self, speed=1.0):
     self.speed = speed
     ns, format = self.player.query_position(gst.FORMAT_TIME)
@@ -382,10 +405,6 @@ class EDL_Editor:
       speed = 1.0
     return speed
     
-  def update_status(self):
-    self.label_time.set_text(self.progress)
-    self.label_speed.set_text("%.2f x" % self.speed)
-
 if __name__ == "__main__":
   EDL_Editor()
   gtk.gdk.threads_init()
