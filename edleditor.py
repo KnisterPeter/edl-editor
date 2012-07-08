@@ -84,6 +84,8 @@ class EDL_Editor:
     self.forward_10s.connect("clicked", self.on_forward_10s)
     self.forward_60s = gtk.Button('60 >')
     self.forward_60s.connect("clicked", self.on_forward_60s)
+    self.forward_120s = gtk.Button('120 >')
+    self.forward_120s.connect("clicked", self.on_forward_120s)
 
     self.previous_marker_button = gtk.Button()
     self.previous_marker_button.set_image(self.PREVIOUS_MARKER)
@@ -115,6 +117,7 @@ class EDL_Editor:
     hbox.pack_start(self.forward_1s, False)
     hbox.pack_start(self.forward_10s, False)
     hbox.pack_start(self.forward_60s, False)
+    hbox.pack_start(self.forward_120s, False)
     hbox.pack_start(gtk.VSeparator(), False, True, 5)
     hbox.pack_start(self.previous_marker_button, False)
     hbox.pack_start(self.start_marker_button, False)
@@ -232,6 +235,10 @@ class EDL_Editor:
   def on_forward_60s(self, w):
     if self.mode == self.MODE_PAUSE:
       self.seek_paused(60)
+
+  def on_forward_120s(self, w):
+    if self.mode == self.MODE_PAUSE:
+      self.seek_paused(120)
 
   def on_slider_change(self, slider):
     pos = self.slider.get_value()
