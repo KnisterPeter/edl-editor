@@ -6,6 +6,6 @@ EDL=$(dirname "$IN")/$EDL.edl
 OUT=/tmp/$(basename "$1")
 
 if [ -f "$IN" -a -f "$EDL" ] ; then
-  mkvedlmerge -i "$IN" -o "$OUT" && mv "$OUT" "$IN" && rm "$EDL"
+  mkvedlmerge -i "$IN" -o "$OUT" && mv -v "$OUT" "$IN" && rm "$EDL"
 fi
 
