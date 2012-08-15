@@ -67,8 +67,12 @@ class EDL_Editor:
     self.rewind_60s.connect("clicked", self.on_rewind_60s)
     self.rewind_10s = gtk.Button('< 10')
     self.rewind_10s.connect("clicked", self.on_rewind_10s)
+    self.rewind_5s = gtk.Button('< 5')
+    self.rewind_5s.connect("clicked", self.on_rewind_5s)
     self.rewind_1s = gtk.Button('< 1')
     self.rewind_1s.connect("clicked", self.on_rewind_1s)
+    self.rewind_1_halfs = gtk.Button('< 1/2')
+    self.rewind_1_halfs.connect("clicked", self.on_rewind_1_halfs)
     self.rewind_button = gtk.Button()
     self.rewind_button.set_image(self.REWIND_IMAGE)
     self.rewind_button.connect("clicked", self.on_rewind)
@@ -78,8 +82,12 @@ class EDL_Editor:
     self.forward_button = gtk.Button()
     self.forward_button.set_image(self.FORWARD_IMAGE)
     self.forward_button.connect("clicked", self.on_forward)
+    self.forward_1_halfs = gtk.Button('1/2 >')
+    self.forward_1_halfs.connect("clicked", self.on_forward_1_halfs)
     self.forward_1s = gtk.Button('1 >')
     self.forward_1s.connect("clicked", self.on_forward_1s)
+    self.forward_5s = gtk.Button('5 >')
+    self.forward_5s.connect("clicked", self.on_forward_5s)
     self.forward_10s = gtk.Button('10 >')
     self.forward_10s.connect("clicked", self.on_forward_10s)
     self.forward_60s = gtk.Button('60 >')
@@ -110,11 +118,15 @@ class EDL_Editor:
     hbox = gtk.HBox()
     hbox.pack_start(self.rewind_60s, False)
     hbox.pack_start(self.rewind_10s, False)
+    hbox.pack_start(self.rewind_5s, False)
     hbox.pack_start(self.rewind_1s, False)
+    hbox.pack_start(self.rewind_1_halfs, False)
     hbox.pack_start(self.rewind_button, False)
     hbox.pack_start(self.play_button, False)
     hbox.pack_start(self.forward_button, False)
+    hbox.pack_start(self.forward_1_halfs, False)
     hbox.pack_start(self.forward_1s, False)
+    hbox.pack_start(self.forward_5s, False)
     hbox.pack_start(self.forward_10s, False)
     hbox.pack_start(self.forward_60s, False)
     hbox.pack_start(self.forward_120s, False)
@@ -142,7 +154,7 @@ class EDL_Editor:
     
     self.window = gtk.Window(gtk.WINDOW_TOPLEVEL)
     self.window.set_title("EDL Editor")
-    self.window.set_default_size(640, 480)
+    self.window.set_default_size(800, 600)
     self.window.set_size_request(600, 50)
     self.window.connect('destroy', self.on_destroy)
     self.window.add(vbox)
@@ -203,9 +215,17 @@ class EDL_Editor:
     if self.mode == self.MODE_PAUSE:
       self.seek_paused(-10)
 
+  def on_rewind_5s(self, w):
+    if self.mode == self.MODE_PAUSE:
+      self.seek_paused(-5)
+
   def on_rewind_1s(self, w):
     if self.mode == self.MODE_PAUSE:
       self.seek_paused(-1)
+
+  def on_rewind_1_halfs(self, w):
+    if self.mode == self.MODE_PAUSE:
+      self.seek_paused(-0.5)
 
   def on_rewind(self, w):
     if self.mode >= self.MODE_PLAY:
@@ -227,6 +247,14 @@ class EDL_Editor:
   def on_forward_1s(self, w):
     if self.mode == self.MODE_PAUSE:
       self.seek_paused(1)
+
+  def on_forward_5s(self, w):
+    if self.mode == self.MODE_PAUSE:
+      self.seek_paused(5)
+
+  def on_forward_1_halfs(self, w):
+    if self.mode == self.MODE_PAUSE:
+      self.seek_paused(0.5)
 
   def on_forward_10s(self, w):
     if self.mode == self.MODE_PAUSE:
